@@ -19,10 +19,18 @@
     {
       "id": "core",
       "registered_at": "2026-11-10T16:01:56+08:00",
+      "status": "inactive",
+      "role": "ba",
+      "host": "Michael-WorkStation",
+      "updated_at": "2026-11-10T16:07:31+08:00"
+    },
+    {
+      "id": "tree",
+      "registered_at": "2026-11-10T16:07:31+08:00",
       "status": "active",
       "role": "ba",
       "host": "Michael-WorkStation",
-      "updated_at": "2026-11-10T16:01:56+08:00"
+      "updated_at": "2026-11-10T16:07:31+08:00"
     }
   ]
 }
