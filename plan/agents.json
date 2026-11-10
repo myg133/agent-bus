@@ -1,0 +1,12 @@
+{
+  "agents": [
+    {
+      "id": "ship",
+      "registered_at": "2026-11-10T15:42:50+08:00",
+      "status": "active",
+      "role": "ba",
+      "host": "archlinux",
+      "updated_at": "2026-11-10T15:42:50+08:00"
+    }
+  ]
+}
