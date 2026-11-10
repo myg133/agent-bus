@@ -73,6 +73,11 @@ DSH 侧已实现 Host 插件 `aw-wake`：读 `.aw/wake/<agent>.json`，调用 DS
 2. **只写 `session_authoritative = true` 的真实 id**，`proc-*` 一律不写；
 3. **必须有 GC**：按条数（建议 cap 500）或天数（建议 7 天）清理，避免无限增长；
 4. **写失败只 warn**；消费方读不到反向映射时**回退到「唯一 cwd」规则**，不得直接拒绝或广播。
+5. **同一 `session_id` 不得映射到不同 `agent_id`**：写入前比对（TTL 内）已有的
+   `by-session/<key>.json`，若 `agent_id` 不同 → **不覆盖**、记 warn、把该条
+   `session_authoritative` 置 `false`；消费方见到 `false` 直接拒绝唤醒。
+   成因只有两种：在 omp/bash 里嵌套启动（子进程继承父会话变量）、或手工把会话变量固定进
+   shell/profile/服务环境。正常多开终端时每个会话 id 唯一，这条检查只增加一次写前比对。
 
 新增命令行为：`aw.py agent whoami --session <SID>` 在未显式给 `--agent` 时，用反向映射解析 agent_id；
 解析不到则保持现有 `MISSING_AGENT_ID` 行为；`--json` 新增 `resolved_by: "session-map"`（其余字段不变）。
@@ -113,7 +118,9 @@ DSH 侧已实现 Host 插件 `aw-wake`：读 `.aw/wake/<agent>.json`，调用 DS
 7. GC：写满 cap 后旧条目被清理，总数不超上限；
 8. 换会话自动改绑：新会话跑一条命令后 map 与 by-session 同时更新；
 9. 无新增网络/Git 调用：`watch` / `msg` 路径 git 调用次数不变；
-10. 失败软降级：`.aw/sessions/` 只读时 `claim list` 仍 exit 0，只打 warn。
+10. 失败软降级：`.aw/sessions/` 只读时 `claim list` 仍 exit 0，只打 warn；
+11. 串号检测：同一 `session_id` 先后由两个 agent 写入 → **不覆盖**、打 warn、
+    `session_authoritative=false`，消费方据此拒绝唤醒并说明原因。
 
 ## 明确不做
 
