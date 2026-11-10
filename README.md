@@ -1,8 +1,9 @@
 # Agent Bus
 
-> （待补充）
+> 分布式多 BA 协作仓库：Git 作为状态层（workspace / demand / deploy 为独立 orphan 分支），
+> 无 Planner，BA 之间通过 `bus` 分支消息协作。
 
-本仓库采用 **Agent Workspace 工作流**（参见 `skills/agent-workspace/`），
+本仓库采用 **Agent Workspace 工作流**（参见 `.agents/skills/agent-workspace/`），
 使用 `workspace` 分支作为根容器，**所有 worktree 在仓库根平铺**（无中间目录层）。
 
 ## 目录 ↔ 分支对应表
@@ -70,7 +71,7 @@ git push -u origin feature/REQ-xxx
 # 在 GitHub/GitLab 创建 PR → develop
 ```
 
-PR 合并后 Dev Agent 自动清理 worktree（详见 `skills/agent-workspace/references/lifecycle/cleanup.md`）。
+PR 合并后 Dev Agent 自动清理 worktree（详见 `.agents/skills/agent-workspace/references/lifecycle/cleanup.md`）。
 
 ## 各角色 Agent 入口
 
@@ -80,7 +81,7 @@ PR 合并后 Dev Agent 自动清理 worktree（详见 `skills/agent-workspace/re
 - **Deploy Agent**（子 agent）→ 进入 `Deploy/` 目录
 - **Explore Agent**（子 agent，只读）→ 任意目录
 
-新 agent 启动时先读 `skills/agent-workspace/SKILL.md`（索引），再读 `references/roles/<角色>.md`。
+新 agent 启动时先读 `.agents/skills/agent-workspace/SKILL.md`（索引），再读 `references/roles/<角色>.md`。
 
 ## 硬规则
 
@@ -94,17 +95,17 @@ PR 合并后 Dev Agent 自动清理 worktree（详见 `skills/agent-workspace/re
 
 ## 详细文档
 
-- 工作流规范：`skills/agent-workspace/SKILL.md`
-- 全局约定：`skills/agent-workspace/references/global/`
-- 角色工作流：`skills/agent-workspace/references/roles/`
-- 初始化：`skills/agent-workspace/references/init/`
-- 生命周期与发布：`skills/agent-workspace/references/lifecycle/`
-- 模板：`skills/agent-workspace/assets/templates/`
-- 自检工具：`python skills/agent-workspace/scripts/aw.py verify`
-- 各角色 Agent 定义：`com.anspire-open.agents/`
+- 工作流规范：`.agents/skills/agent-workspace/SKILL.md`
+- 全局约定：`.agents/skills/agent-workspace/references/global/`
+- 角色工作流：`.agents/skills/agent-workspace/references/roles/`
+- 初始化：`.agents/skills/agent-workspace/references/init/`
+- 生命周期与发布：`.agents/skills/agent-workspace/references/lifecycle/`
+- 模板：`.agents/skills/agent-workspace/assets/templates/`
+- 自检工具：`python .agents/skills/agent-workspace/scripts/aw.py verify`
 - 各角色 README：见对应 worktree 根目录（如 `BA/README.md`）
 
-> 以上路径均相对于本插件根目录（`plugin.json` 所在目录）。
+> skill 本体在本机 `.agents/skills/agent-workspace/`（本地安装、被根 `.gitignore` 忽略，不随仓库分发）；
+> 其他机器加入前需各自安装该 skill。
 
 ## 平台运行目录
 
