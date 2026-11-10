@@ -1,6 +1,6 @@
 # ADR-0001 会话↔agent 映射（session map v1）
 
-- 状态：提议（待 skill 维护者评审）
+- 状态：提议 v2（已吸收 ship 评审意见，待实现方确认）
 - 提出：BA `tree`（DSH / Windows / Michael-WorkStation）
 - 日期：2026-11-10
 - 影响面：`aw.py`、`aw_mcp.py`、`references/global/{concurrency,mcp}.md`
@@ -101,3 +101,56 @@ DSH 侧已实现 Host 插件 `aw-wake`：读 `.aw/wake/<agent>.json`，调用 DS
 2. 配置中的 `sessionId`（显式 pin）；
 3. 仅当 cwd 命中**恰好一个**会话时退化为 cwd 匹配；
 4. 命中多个或找不到 → **拒绝唤醒并记日志**，绝不广播。
+
+## 评审修正（v2，来自 ship / pi 侧实测）
+
+### 1. 验收 #2 在默认配置下不成立
+
+omp 的 MCP 子进程**不继承** `PI_SESSION_ID`（`/proc/<pid>/environ` 里没有 `PI_*`）。
+要在 MCP 侧拿到真实会话，必须在 `.mcp.json` 里显式透传：
+
+```json
+"env": { "AW_SESSION_ID": "${PI_SESSION_ID:-}" }
+```
+
+因此验收 #2 改写为：**"配置透传 `AW_SESSION_ID` 后"**，pi/omp 实跑 `msg send` → 自唤醒行为不变，`session_source` 为 `AW_SESSION_ID`。
+
+### 2. `session_id` 不允许留空
+
+`session_id` 还会进 claim 记录、`[session: ...]` 提交标签、审计 grep；留空会产出 `[session: ]`。
+
+修正：**保留 `generated` 兜底值**（`proc-<pid>`），另加布尔字段 `session_authoritative`：
+
+```json
+{ "session_id": "proc-7300", "session_source": "generated", "session_authoritative": false }
+```
+
+消费方（插件/doctor/审计）只在 `session_authoritative == true` 时拿它做会话定位。
+
+### 3. map 不能假设"一 agent 一活会话"
+
+同一个 agent 在 omp 与 DSH 各开一个会话时，一 agent 一文件仍是 last-writer-wins，DSH 侧拿不到歧义信息，无法执行"拒绝唤醒"。
+
+修正：map 内保存**最近 N 条**（N ≤ 8）会话记录：
+
+```json
+{
+  "agent_id": "tree",
+  "session_id": "session-488f...",
+  "session_authoritative": true,
+  "sessions": [
+    { "session_id": "session-488f...", "source": "DSH_SESSION_ID", "at": "2026-11-10T23:37:00+08:00" },
+    { "session_id": "session-bbbb...", "source": "PI_SESSION_ID",  "at": "2026-11-10T23:20:00+08:00" }
+  ]
+}
+```
+
+- `session_id` = 最新一条（保持简单读取）；
+- 写入时若 TTL（建议 120 分钟，与 stale 阈值一致）内已存在**不同** id，追加并打 warn，不覆盖历史；
+- 消费方看到 TTL 内多条不同 id → **拒绝唤醒并记日志**（歧义），由人确认谁该收消息。
+
+### 4. 实现约束（两条）
+
+- `--session` 是**全局参数**，MCP 侧拼接时必须放在子命令**之前**（`aw.py --session X msg inbox`），否则 argparse 报错；
+- 60s 节流的 `stat` 只放在 `agent whoami` / `agent bind` / `claim` 这类低频命令上，**不要加进 `msg` 热路径**（每轮都要跑）。
+
