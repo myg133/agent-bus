@@ -57,32 +57,63 @@ DSH 侧已实现 Host 插件 `aw-wake`：读 `.aw/wake/<agent>.json`，调用 DS
 - `agent whoami` / `agent bind` 必须刷新；其它命令顺手刷新即可；
 - `pid` 固定 `0`（会话级身份，非短命进程）。
 
-## 改动 3：MCP 侧标注身份不可用于映射
+## 改动 3：反向映射（支撑「每会话显式 agent_id」）
+
+新增 `.aw/sessions/by-session/<key>.json`，`key = sha256(session_id)[:16]`：
+
+```json
+{ "session_id": "session-488f836f-ee40-4e2e-8ed1-e4066ebf123e",
+  "agent_id": "tree", "source": "DSH_SESSION_ID",
+  "updated_at": "2026-11-10T23:37:00+08:00" }
+```
+
+约束（来自 pi 侧评审）：
+
+1. **文件名不用原始 `session_id`**（可能含分隔符或任意字符），用 `sha256(session_id)[:16]`，原始 id 存文件内；
+2. **只写 `session_authoritative = true` 的真实 id**，`proc-*` 一律不写；
+3. **必须有 GC**：按条数（建议 cap 500）或天数（建议 7 天）清理，避免无限增长；
+4. **写失败只 warn**；消费方读不到反向映射时**回退到「唯一 cwd」规则**，不得直接拒绝或广播。
+
+新增命令行为：`aw.py agent whoami --session <SID>` 在未显式给 `--agent` 时，用反向映射解析 agent_id；
+解析不到则保持现有 `MISSING_AGENT_ID` 行为；`--json` 新增 `resolved_by: "session-map"`（其余字段不变）。
+
+## 改动 4：MCP 侧标注身份不可用于映射
 
 `aw_mcp.py`：
 
-- 写会话文件时固定 `session_source: "mcp"`（或 `generated`），**不写 `.map.json`**；
-- 新增可选参数 `session`（透传 `aw.py --session`），缺省行为不变；
+- 写会话文件时固定 `session_source: "mcp"`（或 `generated`），**不写 `.map.json` / `by-session/`**；
+- 新增可选参数 `session`，透传时**必须拼成 `aw.py --session X <子命令>`**（`--session` 是全局参数，在子命令之前）；
 - 工具名、参数名、返回结构不变。
+
+身份来源优先级（两条都保留，不二选一）：
+
+1. **env 透传优先**：客户端能在 MCP 配置里传 `AW_SESSION_ID` 时，直接拿到真实 id；
+2. **map 反查兜底**：拿不到会话变量的客户端（如 DSH 桌面版，MCP 是 profile 级）走反向映射。
 
 ## 文档
 
 `references/global/concurrency.md`（身份一节）+ `global/mcp.md` 增加契约：
 
 > `.aw/sessions/<agent>.map.json` 是"会话↔agent"的唯一权威映射；
+> `.aw/sessions/by-session/<sha256(session_id)[:16]>.json` 是反向映射，供会话从自身 session id 反查 agent id；
 > `session_source` 为 `generated` / `mcp` 的记录只代表"某个进程用过这个身份"，不得用于会话定位；
 > 映射是本机文件，不跨机同步。
 
 ## 验收标准
 
 1. `python -m unittest discover -s tests -v` 0 失败；
-2. pi/omp 实跑 `msg send` → 自唤醒（steer）行为不变，`session_source` 应为 `PI_SESSION_ID`；
+2. **配置透传 `AW_SESSION_ID` 后**，pi/omp 实跑 `msg send` → 自唤醒（steer）行为不变，
+   `session_source` 应为 `AW_SESSION_ID`；
 3. 单 BA 无感：`agent whoami --json`、`msg inbox --json`、`doctor` 前后对比，除新增字段外一致；
-4. 不覆盖：真实会话写过 map 后，连续 5 次 MCP 调用，`map.json` 的 `session_id` 不变；
-5. 多 BA：`tree` / `tree2` 两个会话各生成独立 map，互不干扰；
-6. 换会话自动改绑：新会话跑一条命令后 map 自动更新；
-7. 无新增网络/Git 调用：`watch` / `msg` 路径 git 调用次数不变；
-8. 失败软降级：`.aw/sessions/` 只读时 `claim list` 仍 exit 0，只打 warn。
+4. 不覆盖：真实会话写过 map 后，连续 5 次 MCP 调用，`map.json` 的 `session_id` 不变，
+   `session_authoritative` 仍为 `true`；
+5. 多会话：同一 agent 在两个客户端各写一次 → `sessions` 含两条、打 warn、`session_id` 为最新；
+6. 反向映射：`agent whoami --session <SID>` 解析出正确 agent_id，`resolved_by=session-map`；
+   文件名是 sha256 前 16 位，且 `proc-*` 不产生反向映射文件；
+7. GC：写满 cap 后旧条目被清理，总数不超上限；
+8. 换会话自动改绑：新会话跑一条命令后 map 与 by-session 同时更新；
+9. 无新增网络/Git 调用：`watch` / `msg` 路径 git 调用次数不变；
+10. 失败软降级：`.aw/sessions/` 只读时 `claim list` 仍 exit 0，只打 warn。
 
 ## 明确不做
 
