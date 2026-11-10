@@ -7,6 +7,14 @@
       "role": "ba",
       "host": "archlinux",
       "updated_at": "2026-11-10T15:42:50+08:00"
+    },
+    {
+      "id": "selftest-probe",
+      "registered_at": "2026-11-10T15:53:49+08:00",
+      "status": "inactive",
+      "role": "ba",
+      "host": "archlinux",
+      "updated_at": "2026-11-10T15:54:57+08:00"
     }
   ]
 }
