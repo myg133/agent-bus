@@ -15,6 +15,14 @@
       "role": "ba",
       "host": "archlinux",
       "updated_at": "2026-11-10T15:54:57+08:00"
+    },
+    {
+      "id": "core",
+      "registered_at": "2026-11-10T16:01:56+08:00",
+      "status": "active",
+      "role": "ba",
+      "host": "Michael-WorkStation",
+      "updated_at": "2026-11-10T16:01:56+08:00"
     }
   ]
 }
