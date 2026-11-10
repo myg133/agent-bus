@@ -92,8 +92,20 @@ DSH 侧已实现 Host 插件 `aw-wake`：读 `.aw/wake/<agent>.json`，调用 DS
 
 身份来源优先级（两条都保留，不二选一）：
 
-1. **env 透传优先**：客户端能在 MCP 配置里传 `AW_SESSION_ID` 时，直接拿到真实 id；
-2. **map 反查兜底**：拿不到会话变量的客户端（如 DSH 桌面版，MCP 是 profile 级）走反向映射。
+1. **客户端能提供会话变量时优先**（`AW_SESSION_ID` 透传成功）；
+2. **拿不到时回落 map 反查**。
+
+实测结论（2026-11-10，pi 侧）：**omp / DSH 都属第 2 类**。
+- omp 自身进程 environ 里没有 `PI_SESSION_ID`（只有 `XDG_*` / `DESKTOP_SESSION`），
+  `PI_SESSION_ID` 只注入 **bash 工具子进程**；MCP 子进程 environ 只有 `AW_AGENT_ID`，
+  因此 `.mcp.json` 里 `${PI_SESSION_ID:-}` 会展开为空，该行已撤掉。
+- DSH 桌面版的 MCP 是 profile 级进程，同样拿不到会话变量。
+
+所以两边的 MCP 实际都只能走「map 反查」，env 透传只作为将来客户端支持时的快速路径。
+
+另：`aw_mcp.py` 的参数映射写法不一致——`msg_send` 用 `"--" + key` 生成 `--reply_by`
+（CLI 只认 `--reply-by`，传了就 exit 2），而同文件里 `msg_inbox` 已用 `key.replace("_","-")`。
+建议统一为 `key.replace("_","-")`。
 
 ## 文档
 
