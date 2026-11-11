@@ -1,6 +1,6 @@
 # ADR-0001 会话↔agent 映射（session map v1）
 
-- 状态：已接受 v6（v5 已评审；v6 = 消费方契约：多 agent / 多仓库 / map 形状校验 / 陈旧度；实现方 ship 于 2026-11-11 确认，含 AW_MAP_WRITE 措辞修正）
+- 状态：已接受 v6（v5 已评审；v6 = 消费方契约：多 agent / 多仓库 / map 形状校验 / 陈旧度；实现方 ship 于 2026-11-11 确认，含 AW_MAP_WRITE 措辞修正；第 7 节身份优先级为同轮新增）
 - 提出：BA `tree`（DSH / Windows / Michael-WorkStation）
 - 日期：2026-11-10
 - 影响面：`aw.py`、`aw_mcp.py`、`references/global/{concurrency,mcp}.md`
@@ -259,10 +259,23 @@ omp 的 MCP 子进程**不继承** `PI_SESSION_ID`（`/proc/<pid>/environ` 里�
 
 成功路径：`map` / `sessions-file` / `config` / `cwd-unique`（single）/ `cwd-bootstrap`（多 agent + 单元素白名单）。
 
-### 7. 验收补充
+### 7. 身份声明优先于 session-map 反查
+
+ship 实测发现：同一 session 已被 alice 认领时，两种身份来源行为不一致——
+`--agent bob` 保留 bob（warn + authoritative=false），而 `AW_AGENT_ID=bob` 会被 session-map **静默改写成 alice**。
+
+裁定：**已声明的身份不得被改写**。
+
+- 优先级：显式 `--agent` > 环境变量 `AW_AGENT_ID` > session-map 反查；
+- session-map 反查**只在调用方没有任何身份声明时**生效（既无 `--agent`，也无 `AW_AGENT_ID`）；
+- 已声明身份与 map 属主不一致：保留声明身份，打 warn（带 session id 与两个身份），写本身份 map 时 `session_authoritative=false`，by-session 不覆盖原属主；
+- 理由：静默改写会把串号掩盖成正常写入，审计与 `[session: ...]` 标签都看不出异常。
+
+### 8. 验收补充
 
 1. 两个仓库各有同名 agent，消息各投各的，不串台；
 2. 会话在 `<repo>/code` 下，仍归到仓库根并正确路由；
 3. 手写/残缺 map（缺 `map_version`、`agent_id` 不符、缺 `host`）→ 拒绝且 reason 落 debug；
 4. `updated_at` 25 小时前 → 仍唤醒，debug 有 `stale_hours`；
-5. 两个 agent 的 map 指向同一 session → 都不唤。
+5. 两个 agent 的 map 指向同一 session → 都不唤；
+6. 身份冲突三条路径一致：无身份 → 按 session-map 反查；`AW_AGENT_ID=bob` + 属于 alice 的 session → 仍输出 bob + warn、不写 bob 的反向映射；`--agent bob` → 同上。
