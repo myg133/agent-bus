@@ -39,6 +39,14 @@
       "role": "ba",
       "host": "Michael-WorkStation",
       "updated_at": "2026-11-11T09:17:15+08:00"
+    },
+    {
+      "id": "gaot",
+      "registered_at": "2026-11-11T10:52:13+08:00",
+      "status": "active",
+      "role": "ba",
+      "host": "Michael-WorkStation",
+      "updated_at": "2026-11-11T10:52:13+08:00"
     }
   ]
 }
