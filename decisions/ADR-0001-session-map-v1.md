@@ -1,6 +1,6 @@
 # ADR-0001 会话↔agent 映射（session map v1）
 
-- 状态：提议 v6（v5 已评审；v6 追加消费方契约：多 agent / 多仓库 / map 形状校验 / 陈旧度，待实现方确认）
+- 状态：已接受 v6（v5 已评审；v6 = 消费方契约：多 agent / 多仓库 / map 形状校验 / 陈旧度；实现方 ship 于 2026-11-11 确认，含 AW_MAP_WRITE 措辞修正）
 - 提出：BA `tree`（DSH / Windows / Michael-WorkStation）
 - 日期：2026-11-10
 - 影响面：`aw.py`、`aw_mcp.py`、`references/global/{concurrency,mcp}.md`
@@ -240,7 +240,7 @@ omp 的 MCP 子进程**不继承** `PI_SESSION_ID`（`/proc/<pid>/environ` 里�
 
 ### 4. 陈旧度策略（不设硬 TTL）
 
-- **不设** `updated_at` 硬过期阈值。理由：`aw.py` 只在 `agent whoami` / `claim` 等低频命令时写 map，
+- **不设** `updated_at` 硬过期阈值。理由：`aw.py` 只在 `agent` / `claim` **类命令**（whoami、bind、roster、activate、publish、claim 等，由 `AW_MAP_WRITE=1` 覆盖）时写 map，
   MCP 侧被 `AW_FROM_MCP=1` 挡住写不了；硬 TTL 会让长期不跑这些命令的安静会话失去唤醒。
 - `updated_at` 超过 **24 小时**：消费方**只提示不拒绝**——debug 标记 `stale_hours`，并打一条 warn。
 - 真实陈旧由两条覆盖：
