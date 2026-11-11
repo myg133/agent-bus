@@ -1,6 +1,6 @@
 # ADR-0001 会话↔agent 映射（session map v1）
 
-- 状态：提议 v2（已吸收 ship 评审意见，待实现方确认）
+- 状态：提议 v6（v5 已评审；v6 追加消费方契约：多 agent / 多仓库 / map 形状校验 / 陈旧度，待实现方确认）
 - 提出：BA `tree`（DSH / Windows / Michael-WorkStation）
 - 日期：2026-11-10
 - 影响面：`aw.py`、`aw_mcp.py`、`references/global/{concurrency,mcp}.md`
@@ -204,3 +204,65 @@ omp 的 MCP 子进程**不继承** `PI_SESSION_ID`（`/proc/<pid>/environ` 里�
 - `--session` 是**全局参数**，MCP 侧拼接时必须放在子命令**之前**（`aw.py --session X msg inbox`），否则 argparse 报错；
 - 60s 节流的 `stat` 只放在 `agent whoami` / `agent bind` / `claim` 这类低频命令上，**不要加进 `msg` 热路径**（每轮都要跑）。
 
+## v6：消费方契约补充（多 agent / 多仓库 / map 校验 / 陈旧度）
+
+背景：`aw-wake` 从「一实例一 agent、只按 cwd 匹配」改为「单实例多 agent、多仓库自动发现」。
+写方（`aw.py`）的契约不变；本节只约束**读方**（插件/doctor/审计等所有消费 map 的实现）。
+
+### 1. 一个实例服务多个 agent
+
+- 不配置 `agentId` 时，消费方监听 `<repo>/.aw/wake/*.json`，按**消息自带的 `agent` 字段**路由；
+  不再要求「一 agent 起一个实例」——多实例各自靠 cwd 兜底正是串号的成因。
+- `agentId` 仅用于单 agent 部署；`agents` 是可选白名单。
+
+### 2. 一个实例服务多个仓库
+
+- 仓库归属由**会话 `cwd`** 决定：从 cwd 向上逐级查找，最近一个含 `.aw/` 的目录即仓库根；
+  因此 `code/` 等子目录里打开的会话也能归到 `<repo-root>`。
+- 仓库不需要写进配置；`repoRoot` / `repoRoots` 只用于**限定**监听范围。
+- 路由键是 `(repo, agent)`：不同仓库允许存在同名 agent，消息不得跨仓库投递。
+
+### 3. map 形状校验（消费方必须做）
+
+读 `<repo>/.aw/sessions/<agent>.map.json` 前校验，任一不满足即视为不可用：
+
+| 字段 | 要求 | 不满足时的 reason |
+|------|------|-------------------|
+| — | 必须是 JSON 对象 | `map-invalid` |
+| `map_version` | `== 2` | `map-version` |
+| `session_authoritative` | `=== true` | `map-not-authoritative` |
+| `agent_id` | 若存在，必须与文件名一致 | `map-agent-mismatch` |
+| `session_id` | 非空，且不以 `proc-` 开头 | `map-no-session` |
+| `host` | 非空 | `map-no-host` |
+
+说明：手写 map 无法从内容上与生成物区分，形状校验只能挡「不合规」，挡不住「合规但陈旧」；
+因此形状校验是必要条件，不是充分条件。
+
+### 4. 陈旧度策略（不设硬 TTL）
+
+- **不设** `updated_at` 硬过期阈值。理由：`aw.py` 只在 `agent whoami` / `claim` 等低频命令时写 map，
+  MCP 侧被 `AW_FROM_MCP=1` 挡住写不了；硬 TTL 会让长期不跑这些命令的安静会话失去唤醒。
+- `updated_at` 超过 **24 小时**：消费方**只提示不拒绝**——debug 标记 `stale_hours`，并打一条 warn。
+- 真实陈旧由两条覆盖：
+  1. 映射的 session 不在线 → `map-offline`，拒绝；
+  2. 会话 id 变了 → 旧 map 指向的会话不存在，同样 `map-offline`。
+
+### 5. 防串号：同会话双认领
+
+消费方在仓库内读取全部 `*.map.json`，按 `session_id` 反查会被谁认领；
+若同一 session 被两个 agent 认领 → `session-shared`，**双方都拒绝**并记日志，不按新旧的 last-writer-wins 投递。
+
+### 6. 拒绝原因枚举（写入消费方 debug，便于排查）
+
+`map-invalid` `map-version` `map-not-authoritative` `map-agent-mismatch` `map-no-session`
+`map-no-host` `map-ambiguous:<n>` `session-shared:<agents>` `map-offline` `ambiguous-cwd` `no-map`
+
+成功路径：`map` / `sessions-file` / `config` / `cwd-unique`（single）/ `cwd-bootstrap`（多 agent + 单元素白名单）。
+
+### 7. 验收补充
+
+1. 两个仓库各有同名 agent，消息各投各的，不串台；
+2. 会话在 `<repo>/code` 下，仍归到仓库根并正确路由；
+3. 手写/残缺 map（缺 `map_version`、`agent_id` 不符、缺 `host`）→ 拒绝且 reason 落 debug；
+4. `updated_at` 25 小时前 → 仍唤醒，debug 有 `stale_hours`；
+5. 两个 agent 的 map 指向同一 session → 都不唤。
